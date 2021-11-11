@@ -73,12 +73,13 @@
 
 \begin{abstract}
     % TODO remove the word "will" after abstract submission
-    We will explore using Vector Quantized Variational Autoencoder (VQ-VAE) to generate discrete representations for faces in traditional japanese paintings.
-    While Autoencoders typically learn continuous latent representations for data, the recent success of VQ-VAE demonstrates the advantages of discrete latent variables.
-    While continuous representations are flexible, many real world attributes are better defined discretely, and some current state of the art network architectures, like transformers, only work on discrete data.
-    In this project, we will experiment with VQ-VAEs on a novel dataset and design experiments to test the advantages and disadvantages of this approach.
-    VQ-VAEs have been paired with the transformer architecture which, while scalable, can require a lot of compute, so we will experiment with making the method more compute efficient.  % Not sure what to put in this sentence??? Maybe something generic for now.
-    A successful project will demonstrate the strengths and weaknesses of VQ-VAEs over traditional VAEs.
+    We will explore using the Vector Quantized Variational Autoencoder (VQ-VAE) to generate discrete representations for the Kaokore dataset, which contains images of facial expressions from traditional Japanese illustrations (\url{https://github.com/rois-codh/kaokore}).
+    The framework VQ-VAE is built on, Variational Autoencoders (VAE), learn continuous latent representations.
+    While continuous representations are flexible, many real world attributes are better defined discretely, and some current state-of-the art model architectures, like transformers, only work on discrete data. Additionally, VAEs have been shown to exhibit posterior collapse, which means that latent codes are ignored. 
+    In this project, we will experiment with VQ-VAEs on a novel dataset and design experiments to test the advantages and disadvantages of this approach in terms of generation quality and learned latent structure.
+    Since the VQ-VAE paper uses CIFAR10 and 128x128 ImageNet images, there might be additional experimentation and training required to achieve good performance on the Kaokore dataset.
+    % VQ-VAEs have been paired with the transformer architecture which, while scalable, can require a lot of compute, so we will experiment with making the method more compute efficient.   % Not sure what to put in this sentence??? Maybe something generic for now.
+    A successful project will demonstrate the strengths and weaknesses of VQ-VAEs over traditional VAEs. 
 \end{abstract}
 
 \section{Submission of papers to NeurIPS 2020}
