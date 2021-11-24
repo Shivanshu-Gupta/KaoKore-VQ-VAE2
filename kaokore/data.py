@@ -2,9 +2,16 @@
 
 import csv
 import os
-from PIL import Image
+import pickle
 import torch
+from PIL import Image
 from torch.utils.data import Dataset
+from torchvision import datasets
+from collections import namedtuple
+
+import lmdb
+
+CodeRow = namedtuple('CodeRow', ['top', 'bottom', 'filename'])
 
 label_texts = dict(
     gender=['male', 'female'],
@@ -32,16 +39,11 @@ def load_labels(path):
         }
                 for row in reader]
 
-
 class Kaokore(Dataset):
-
     def __init__(self, root, split='train', category='gender', transform=None):
         self.root = root = os.path.expanduser(root)
-
         self.split = verify_str_arg(split, ['train', 'dev', 'test'])
-
         self.category = verify_str_arg(category, ['gender', 'status'])
-
         labels = load_labels(os.path.join(root, 'labels.csv'))
         self.entries = [
             (label_entry['image'], int(label_entry[category]))
@@ -59,6 +61,43 @@ class Kaokore(Dataset):
         image_filepath = os.path.join(self.root, 'images_256', image_filename)
         image = image_loader(image_filepath)
         if self.transform is not None:
-            image, label = self.transform(image, label)
+            image = self.transform(image)
 
         return image, label
+class ImageFileDataset(datasets.ImageFolder):
+    def __getitem__(self, index):
+        sample, target = super().__getitem__(index)
+        path, _ = self.samples[index]
+        dirs, filename = os.path.split(path)
+        _, class_name = os.path.split(dirs)
+        filename = os.path.join(class_name, filename)
+
+        return sample, target, filename
+
+class LMDBDataset(Dataset):
+    def __init__(self, path):
+        self.env = lmdb.open(
+            path,
+            max_readers=32,
+            readonly=True,
+            lock=False,
+            readahead=False,
+            meminit=False,
+        )
+
+        if not self.env:
+            raise IOError('Cannot open lmdb dataset', path)
+
+        with self.env.begin(write=False) as txn:
+            self.length = int(txn.get('length'.encode('utf-8')).decode('utf-8'))
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        with self.env.begin(write=False) as txn:
+            key = str(index).encode('utf-8')
+
+            row = pickle.loads(txn.get(key))
+
+        return torch.from_numpy(row.top), torch.from_numpy(row.bottom), row.filename

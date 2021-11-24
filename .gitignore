@@ -553,4 +553,8 @@ fabric.properties
 # ---------------------------------------------------------------------------- #
 #                                   This Repo                                  #
 # ---------------------------------------------------------------------------- #
+data/
 kaokore-dataset/kaokore
+vision/
+vq-vae-2-pytorch/
+kaokore/checkpoint/
