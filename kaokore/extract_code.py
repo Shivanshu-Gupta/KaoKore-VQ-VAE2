@@ -8,7 +8,7 @@ import lmdb
 from tqdm import tqdm
 
 from data import ImageFileDataset, CodeRow
-from vqvae import VQVAE
+from models.vqvae import VQVAE
 
 
 def extract(lmdb_env, loader, model, device):

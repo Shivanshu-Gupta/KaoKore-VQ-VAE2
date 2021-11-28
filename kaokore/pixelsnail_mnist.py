@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets
 from tqdm import tqdm
 
-from pixelsnail import PixelSNAIL
+from models.pixelsnail import PixelSNAIL
 
 
 def train(epoch, loader, model, optimizer, device):

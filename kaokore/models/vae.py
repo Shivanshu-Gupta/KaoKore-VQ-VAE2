@@ -7,7 +7,8 @@ from torch import nn
 from torch.nn import functional as F
 from torchinfo import summary
 
-from nearest import NearestEmbed
+from models.utils import ResBlock, add_res_block, add_conv2d_block, add_convtranspose2d_block
+from models.nearest import NearestEmbed, Quantize
 
 class AbstractAutoEncoder(nn.Module):
     __metaclass__ = abc.ABCMeta
@@ -213,76 +214,15 @@ class VQ_VAE(AbstractAutoEncoder):
         _x, z_e, emb = vqvae(x)
         loss = vqvae.loss(x, _x, z_e, emb)
 
-class ResBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, mid_channels=None, bn=False):
-        super(ResBlock, self).__init__()
-        mid_channels = mid_channels or out_channels
-        layers = [
-            nn.ReLU(),
-            nn.Conv2d(in_channels, mid_channels, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(mid_channels, out_channels, kernel_size=1, stride=1, padding=0)
-        ]
-        if bn: layers.insert(2, nn.BatchNorm2d(mid_channels))
-        self.convs = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return x + self.convs(x)
-
-def add_res_block(layers, in_channels, out_channels, mid_channels=None, bn=False, final_bn=False):
-    layers.append(ResBlock(in_channels, out_channels, mid_channels, bn))
-    if final_bn: layers.append(nn.BatchNorm2d(out_channels))
-
-def add_conv2d_block(layers, in_channels, out_channels, kernel_size, stride=1, padding=0,
-                   activation=nn.ReLU(inplace=True), bn=False):
-    layers.append(nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding))
-    if bn: layers.append(nn.BatchNorm2d(out_channels))
-    layers.append(activation)
-
-def add_convtranspose2d_block(layers, in_channels, out_channels, kernel_size, stride=1, padding=0,
-                   activation=nn.ReLU(inplace=True), bn=False):
-    layers.append(nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride, padding))
-    if bn: layers.append(nn.BatchNorm2d(out_channels))
-    layers.append(activation)
-
-class Conv2dBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0,
-                 activation=nn.ReLU(inplace=True), bn=False):
-        super(Conv2dBlock, self).__init__()
-        layers = [
-            nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding),
-            activation
-        ]
-        if bn: layers.insert(1, nn.BatchNorm2d(out_channels))
-        self.net = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.net(x)
-
-class ConvTranspose2dBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0,
-                 activation=nn.ReLU(inplace=True), bn=False):
-        super(ConvTranspose2dBlock, self).__init__()
-        layers = [
-            nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride, padding),
-            activation
-        ]
-        if bn: layers.insert(1, nn.BatchNorm2d(out_channels))
-        self.net = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.net(x)
-
-
 class CVAE(AbstractAutoEncoder):
     """
     Convolutional VAE
     - Gaussian Latent
     - loss = mse reconstruction error + KL Divergence
     """
-    def __init__(self, d, kl_coef=0.1, num_channels=3, bn=True, **kwargs):
+    def __init__(self, d, kl_coef=0.1, num_channels=3, bn=True, input_size=256, **kwargs):
         super(CVAE, self).__init__()
-        self.f = 8  # TODO: make this a parameter if possible
+        self.f = 64 if input_size == 256 else 8
         self.d = d
 
         self.encoder = nn.Sequential(
@@ -299,6 +239,7 @@ class CVAE(AbstractAutoEncoder):
 
             ResBlock(d, d, bn=True)
         )
+        breakpoint()
         self.fc11 = nn.Linear(d * self.f ** 2, d * self.f ** 2)
         self.fc12 = nn.Linear(d * self.f ** 2, d * self.f ** 2)
         self.decoder = nn.Sequential(
@@ -346,6 +287,7 @@ class CVAE(AbstractAutoEncoder):
         return self.decode(sample).cpu()
 
     def loss(self, x, recon_x, mu, logvar):
+        breakpoint()
         self.mse = F.mse_loss(recon_x, x)
         batch_size = x.size(0)
 
@@ -376,7 +318,7 @@ class VQ_CVAE(AbstractAutoEncoder):
     - Catetorical Latent
     - loss = mse reconstruction error + codebook loss + commitment loss
     """
-    def __init__(self, d, k=10, bn=True, vq_coef=1, commit_coef=0.5, num_channels=3, old=True, **kwargs):
+    def __init__(self, d, k=10, bn=True, vq_coef=1, commit_coef=0.5, num_channels=3, **kwargs):
         super(VQ_CVAE, self).__init__()
         self.d = d
 
@@ -458,7 +400,7 @@ class VQ_CVAE(AbstractAutoEncoder):
         x =  self.decode(emb.view(size, self.d, self.f, self.f)).cpu()
         return x
 
-    def loss(self, x, recon_x, z_e, emb):
+    def loss(self, x, recon_x, z_e, emb, argmin):
         self.mse = F.mse_loss(recon_x, x)
 
         self.vq_loss = torch.mean(torch.norm((emb - z_e.detach())**2, 2, 1))
@@ -469,12 +411,6 @@ class VQ_CVAE(AbstractAutoEncoder):
     def latest_losses(self):
         return {'mse': self.mse, 'vq': self.vq_loss, 'commitment': self.commit_loss}
 
-    def print_atom_hist(self, argmin):
-        argmin = argmin.detach().cpu().numpy()
-        unique, counts = np.unique(argmin, return_counts=True)
-        logging.info(counts)
-        logging.info(unique)
-
     @classmethod
     def test(_):
         vqcvae = VQ_CVAE(d=256)
@@ -482,3 +418,123 @@ class VQ_CVAE(AbstractAutoEncoder):
         x = torch.rand(64, 3, 32, 32)
         _x, mu, logvar, argmin = vqcvae(x)
         loss = vqcvae.loss(x, _x, mu, logvar)
+
+def get_encoder(in_channel, channel, n_res_block, res_channel, stride, bn=False):
+    encoder_layers = []
+    add_conv2d_block(encoder_layers, in_channel, channel // 2, 4, 2, 1, bn=bn)
+    if stride == 4:
+        add_conv2d_block(encoder_layers, channel // 2, channel, 4, 2, 1, bn=bn)
+        encoder_layers.append(nn.Conv2d(channel, channel, 3, padding=1))
+    else:
+        encoder_layers.append(nn.Conv2d(channel // 2, channel, 3, padding=1))
+    for _ in range(n_res_block):
+        add_res_block(encoder_layers, channel, channel, res_channel, bn=bn, final_bn=bn)
+    encoder_layers.append(nn.ReLU(inplace=True))
+    return nn.Sequential(*encoder_layers)
+
+def get_decoder(in_channel, out_channel, channel, n_res_block, res_channel, stride, bn=False):
+    decoder_layers = [nn.Conv2d(in_channel, channel, 3, padding=1)]
+    for _ in range(n_res_block):
+        add_res_block(decoder_layers, channel, channel, res_channel, bn=bn, final_bn=bn)
+    if stride == 4:
+        add_convtranspose2d_block(decoder_layers, channel, channel // 2, 4, 2, 1, bn=bn)
+        decoder_layers.append(nn.ConvTranspose2d(channel // 2, out_channel, kernel_size=4, stride=2, padding=1))
+    else:
+        decoder_layers.append(nn.ConvTranspose2d(channel, out_channel, kernel_size=4, stride=2, padding=1))
+    return nn.Sequential(*decoder_layers)
+
+class VQ_VAE2(nn.Module):
+    def __init__(
+        self,
+        in_channel=3,
+        channel=128,
+        n_res_block=2,
+        res_channel=32,
+        embed_dim=64,
+        n_embed=512,
+        bn=False,
+        decay=0.99,
+        commit_coef=0.25,
+    ):
+        super().__init__()
+
+        # ENCODER: input -> (quant_b, quant_t)
+        # input -> enc_b -> enc_t -> conv_t -> quant_t -> dec_t
+        self.enc_b = get_encoder(in_channel, channel, n_res_block, res_channel, stride=4, bn=bn)
+        self.enc_t = get_encoder(channel, channel, n_res_block, res_channel, stride=2, bn=bn)
+        self.quantize_conv_t = nn.Conv2d(channel, embed_dim, 1)
+        self.quantize_t = Quantize(embed_dim, n_embed)
+        self.dec_t = get_decoder(embed_dim, embed_dim, channel,
+                                 n_res_block, res_channel, stride=2, bn=bn)
+
+        # (enc_b, dec_t) -> conv_b -> quant_b
+        self.quantize_conv_b = nn.Conv2d(embed_dim + channel, embed_dim, 1)
+        self.quantize_b = Quantize(embed_dim, n_embed)
+
+        # DECODER: (quant_b, quant_t) -> output
+        # quant_t -> unsample_t
+        self.upsample_t = nn.ConvTranspose2d(embed_dim, embed_dim, 4, stride=2, padding=1)
+
+        # (upsample_t, quant_b) -> dec_b (output)
+        self.dec_b = get_decoder(embed_dim + embed_dim, in_channel, channel,
+                                 n_res_block, res_channel, stride=4, bn=bn)
+
+        self.commit_coef = commit_coef
+
+    def forward(self, input):
+        quant_t, quant_b, diff, _, _ = self.encode(input)
+        dec = self.decode(quant_t, quant_b)
+
+        return dec, diff
+
+    def encode(self, input):
+        enc_b = self.enc_b(input)
+        enc_t = self.enc_t(enc_b)
+
+        quant_t = self.quantize_conv_t(enc_t).permute(0, 2, 3, 1)
+        quant_t, diff_t, id_t = self.quantize_t(quant_t)
+        quant_t = quant_t.permute(0, 3, 1, 2)
+        diff_t = diff_t.unsqueeze(0)
+
+        dec_t = self.dec_t(quant_t)
+        enc_b = torch.cat([dec_t, enc_b], 1)
+
+        quant_b = self.quantize_conv_b(enc_b).permute(0, 2, 3, 1)
+        quant_b, diff_b, id_b = self.quantize_b(quant_b)
+        quant_b = quant_b.permute(0, 3, 1, 2)
+        diff_b = diff_b.unsqueeze(0)
+
+        return quant_t, quant_b, diff_t + diff_b, id_t, id_b
+
+    def decode(self, quant_t, quant_b):
+        upsample_t = self.upsample_t(quant_t)
+        quant = torch.cat([upsample_t, quant_b], 1)
+        dec_b = self.dec_b(quant)
+
+        return dec_b
+
+    def decode_code(self, code_t, code_b):
+        quant_t = self.quantize_t.embed_code(code_t)
+        quant_t = quant_t.permute(0, 3, 1, 2)
+        quant_b = self.quantize_b.embed_code(code_b)
+        quant_b = quant_b.permute(0, 3, 1, 2)
+
+        dec = self.decode(quant_t, quant_b)
+
+        return dec
+
+    def loss(self, x, x_rec, diff, return_parts=False):
+        recon_loss = F.mse_loss(x_rec, x, reduction='mean')
+        commit_loss = diff.mean()
+        loss = recon_loss + self.commit_coef * commit_loss
+        if not return_parts: return loss
+        else: return loss, recon_loss, commit_loss
+
+    @classmethod
+    def test(_):
+        vqvae2 = VQ_VAE2()
+        input_size=(64, 3, 256, 256)
+        summary(vqvae2, input_size=input_size, depth=4)
+        x = torch.rand(*input_size)
+        _x, diff = vqvae2(x)
+        loss = vqvae2.loss(x, _x, diff)
