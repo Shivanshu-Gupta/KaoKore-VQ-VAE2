@@ -1,0 +1,14 @@
+apex==0.9.10dev
+comet_ml==3.23.0
+dataset==1.5.1
+lmdb==1.2.1
+numpy==1.21.4
+Pillow==8.4.0
+pycocotools==2.0.3
+rich==10.15.1
+tensorboardX==2.4.1
+torch==1.10.0+cu113
+torchinfo==1.5.4
+torchvision==0.11.1+cu113
+tqdm==4.62.3
+typer==0.4.0

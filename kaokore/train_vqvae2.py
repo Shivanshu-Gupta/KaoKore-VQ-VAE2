@@ -1,4 +1,6 @@
 import os, sys
+import datetime
+import json
 import typer
 import comet_ml
 import torch
@@ -24,15 +26,15 @@ port = (
     + hash(os.getuid() if sys.platform != "win32" else 1) % 2 ** 14
 )
 
-def save_reconstruction(model, img, sample_size, epoch, experiment: comet_ml.Experiment = None):
+def save_reconstruction(model, img, sample_size, epoch, results_dir, experiment: comet_ml.Experiment = None, test=False):
     model.eval()
     sample = img[:sample_size]
     with torch.no_grad(): out, _ = model(sample)
     image_grid = make_grid(torch.cat([sample.mul(0.5).add(0.5), out.mul(0.5).add(0.5)], 0))
-    name = f"train-{epoch+1:05}"
+    name = f"test-{epoch+1:05}" if test else f"train-{epoch+1:05}"
     save_image(
         torch.cat([sample, out], 0),
-        f"sample/{name}.png",
+        "results/{}/samples/{}.png".format(results_dir, name),
         nrow=sample_size,
         normalize=True,
         range=(-1, 1),
@@ -41,7 +43,7 @@ def save_reconstruction(model, img, sample_size, epoch, experiment: comet_ml.Exp
         # breakpoint()
         experiment.log_image(image_data=image_grid.to('cpu'), name=name, image_channels='first', overwrite=True)
 
-def train(epoch: int, loader: DataLoader, model: VQ_VAE2, optimizer, scheduler, device, experiment: comet_ml.Experiment = None):
+def train(epoch: int, loader: DataLoader, model: VQ_VAE2, optimizer, scheduler, device, results_dir, experiment: comet_ml.Experiment = None):
     if dist.is_primary(): loader = tqdm(loader)
 
     sample_size = 8
@@ -91,7 +93,7 @@ def train(epoch: int, loader: DataLoader, model: VQ_VAE2, optimizer, scheduler, 
                 f"lr: {lr:.5f}"
             ]))
 
-    save_reconstruction(model, img, sample_size, epoch, experiment)
+    save_reconstruction(model, img, sample_size, epoch, results_dir, experiment)
     if experiment:
         experiment.log_metrics(dict(
             loss=loss_sum / mse_n,
@@ -99,7 +101,54 @@ def train(epoch: int, loader: DataLoader, model: VQ_VAE2, optimizer, scheduler, 
             commitment=commit_sum / mse_n
         ))
 
-# def test(epoch: int, loader: DataLoader, model: VQ_VAE2, device)
+
+def test(epoch: int, loader: DataLoader, model: VQ_VAE2, device, results_dir, experiment: comet_ml.Experiment = None):
+    sample_size = 8
+    loss_sum = 0
+    mse_sum = 0
+    commit_sum = 0
+    mse_n = 0
+    for i, (img, label) in enumerate(loader):
+        model.eval()
+
+        with torch.no_grad():
+            img = img.to(device)
+            out, diff = model(img)
+            loss, recon_loss, commit_loss = model.loss(img, out, diff, return_parts=True)
+
+        part_loss_sum = loss.item() * img.shape[0]
+        part_mse_sum = recon_loss.item() * img.shape[0]
+        part_commit_sum = commit_loss.item() * img.shape[0]
+        part_mse_n = img.shape[0]
+        comm = {"loss_sum": part_loss_sum,
+                "mse_sum": part_mse_sum,
+                "commit_sum": part_commit_sum,
+                "mse_n": part_mse_n}
+        comm = dist.all_gather(comm)
+
+        for part in comm:
+            loss_sum += part['loss_sum']
+            mse_sum += part["mse_sum"]
+            commit_sum += part['commit_sum']
+            mse_n += part["mse_n"]
+
+        if i == 0:
+            save_reconstruction(model, img, sample_size, epoch, results_dir, experiment, test=True)
+
+    if dist.is_primary():
+        print('; '.join([
+            f"(test stats)\t\t\t\t     avg loss: {loss_sum / mse_n:.5f}",
+            f"avg mse: {mse_sum / mse_n:.5f}"
+        ]))
+        print()
+
+    if experiment:
+        experiment.log_metrics(dict(
+            test_loss=loss_sum / mse_n,
+            test_mse=mse_sum / mse_n,
+            test_commitment=commit_sum / mse_n
+        ))
+
 
 def main(path: str, category: str = 'gender', n_gpu: int = 1, dist_url: str = f"tcp://127.0.0.1:{port}",
           size: int = 256, batchsize: int = 128, epoch: int = 560, lr: float = 0.001, sched: Optional[str] = None,
@@ -107,6 +156,14 @@ def main(path: str, category: str = 'gender', n_gpu: int = 1, dist_url: str = f"
     device = "cuda"
 
     distributed = dist.get_world_size() > 1
+
+    results_dir = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_vqvae2"
+    os.makedirs("results/{}/samples".format(results_dir))
+    os.makedirs("results/{}/checkpoints".format(results_dir))
+    with open("results/{}/args.json".format(results_dir), "w") as f:
+        args = locals()
+        args.pop("f")
+        json.dump(args, f, indent=4)
 
     # DATA
     transform = transforms.Compose([
@@ -120,6 +177,9 @@ def main(path: str, category: str = 'gender', n_gpu: int = 1, dist_url: str = f"
     dataset = Kaokore(path, split='train', category=category, transform=transform)
     sampler = dist.data_sampler(dataset, shuffle=True, distributed=distributed)
     loader = DataLoader(dataset, batch_size=batchsize // n_gpu, sampler=sampler, num_workers=2)
+    dataset_test = Kaokore(path, split='test', category=category, transform=transform)
+    sampler_test = dist.data_sampler(dataset_test, shuffle=False, distributed=distributed)
+    loader_test = DataLoader(dataset_test, batch_size=batchsize // n_gpu, sampler=sampler_test, num_workers=2)
 
     # MODEL
     model = VQ_VAE2(commit_coef=0.1).to(device)
@@ -157,10 +217,12 @@ def main(path: str, category: str = 'gender', n_gpu: int = 1, dist_url: str = f"
     # TRAIN LOOP
     for i in range(epoch):
         with experiment.train() if comet else nullcontext():
-            train(i, loader, model, optimizer, scheduler, device, experiment=experiment)
+            train(i, loader, model, optimizer, scheduler, device, results_dir, experiment=experiment)
+        with experiment.test() if comet else nullcontext():
+            test(i, loader_test, model, device, results_dir, experiment=experiment)
 
         if dist.is_primary():
-            torch.save(model.state_dict(), f"checkpoint/vqvae_{str(i + 1).zfill(3)}.pt")
+            torch.save(model.state_dict(), "results/{}/checkpoints/vqvae_{}.pt".format(results_dir, str(i + 1).zfill(3)))
 
 @app.command()
 def run(path: str, category: str = 'gender', n_gpu: int = 1, dist_url: str = f"tcp://127.0.0.1:{port}",
