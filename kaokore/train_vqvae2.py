@@ -92,6 +92,16 @@ def train(epoch: int, loader: DataLoader, model: VQ_VAE2, optimizer, scheduler, 
                 f"avg mse: {mse_sum / mse_n:.5f}",
                 f"lr: {lr:.5f}"
             ]))
+            with open("results/{}/train_metrics.txt".format(results_dir), "a") as f:
+                f.write("\n"+'; '.join([
+                    f"epoch: {epoch + 1}",
+                    f"mse: {recon_loss.item():.5f}",
+                    f"commitment: {commit_loss.item():.5f}",
+                    f"avg_loss: {loss_sum / mse_n:.5f}",
+                    f"avg_mse: {mse_sum / mse_n:.5f}",
+                    f"lr: {lr:.5f}"
+                ]))
+
 
     save_reconstruction(model, img, sample_size, epoch, results_dir, experiment)
     if experiment:
@@ -141,6 +151,13 @@ def test(epoch: int, loader: DataLoader, model: VQ_VAE2, device, results_dir, ex
             f"avg mse: {mse_sum / mse_n:.5f}"
         ]))
         print()
+
+        with open("results/{}/test_metrics.txt".format(results_dir), "a") as f:
+            f.write("\n"+'; '.join([
+                f"epoch: {epoch+1}",
+                f"avg_loss: {loss_sum / mse_n:.5f}",
+                f"avg_mse: {mse_sum / mse_n:.5f}"
+            ]))
 
     if experiment:
         experiment.log_metrics(dict(
