@@ -14,7 +14,7 @@
 \usepackage{microtype}      % microtypography
 \usepackage{graphicx}
 \usepackage{subcaption}
-
+\usepackage{float}
 
 \title{Vector Quantized Variational Autoencoders \\on Novel Datasets}
 
@@ -48,19 +48,53 @@ One generative machine learning model that learns latent variable representation
 
 Traditional VAEs learn a latent space that is associated with a probablility distribution of continuous variables. Vector quantized variational autoencoders (VQ-VAE) learn discrete latent variables instead. Discrete variables are cometimes advantageous because real world data can often be summarized by categorical features. 
 
-In this work, we compare two variations of VQ-VAEs. The second variation (VQ-VAE2) was released as a follow up to VQ-VAEs and introduces a hierarchical structure for the model. We go into further detail comparing the algorithms in section \ref{vqvae}. We implement each of these methods and run experiemnts with each on the Kaokore dataset. To the best of our knowledge, this is the first time VAEs have been used to learn a latent space for this dataset.
+In this work, we compare two variations of VQ-VAEs. The second variation (VQ-VAE2) was released as a follow up to VQ-VAEs and introduces a hierarchical structure for the model. We go into further detail comparing the algorithms in section \ref{methods}. We implement each of these methods and run experiemnts with each on the Kaokore dataset. To the best of our knowledge, this is the first time VAEs have been used to learn a latent space for this dataset.
 
-\section{Background}
-
-Generative models...
-
-Autoencoders...
-
-\section{Vector Quantized Variational Autoencoders} \label{vqvae}
+\section{Methods} \label{methods}
+In this section, we will describe the various models used in this paper: VAE, VQ-VAE, and VQ-VAE2. While the continuous latent representation of VAEs offers benefits such as latent interpolation, having discrete latent representations can be a more natural fit for certain modalities. Additionally, it has been shown that VAEs can suffer from posterior collapse, a phenomenon in which the learned latent space becomes uninformative. VQ-VAEs have been formulated to address these concerns, while still offering similar performance to VAEs. 
 
 \subsection{VAE}
+Similar to vanilla autoencoders, variational autoencoders include an encoder which yields a lower dimensional latent representation and a decoder which reconstructs the input. However, VAEs compute an additional loss term that computes the Kullback-Leibler (KL) divergence between the encoder’s distribution \(q_{\theta}(z|x)\) and \(p(z)\), where \(p(z)\) is typically specified as a normal distribution with zero mean and unit variance. This term serves as a regularizer that keeps similar inputs’ latent representations close together.
+
+From a generative modeling perspective, imagine data point \textit{i} is sampled by 1) drawing latent variable \(z_{i}\) and 2) drawing datapoint \(x_{i}\) based on \(z_{i}\). Therefore, we would like to infer a good latent representation \textit{z} given input \textit{x}. This is given by the posterior:
+
+\begin{equation}
+    p(z|x) = \frac{p(x|z)p(z)}{p(x)}
+\end{equation}
+
+However, computing the denominator \(p(x)\) requires marginalizing over latents \textit{z} and is often computationally intractable. Instead, variational inference allows us to approximate \textit{p(z|x)} through another distribution \textit{q(z|x)}, which is referred to as the approximate posterior. In other words, we would like to optimize the divergence between the approximate and original posteriors:
+
+\begin{equation}
+    \min{KL(q(z|x) \| p(z|x))} 
+\end{equation}
+
+The expression above cannot be optimized directly, since it requires computing \textit{p(x)}. While we do not go through the derivation here, minimizing the KL divergence between \textit{q(z|x)} and \textit{p(z|x)} is equivalent to maximizing the evidence lower bound (ELBO), which is computationally tractable. 
+
+\begin{equation}
+ELBO = E_{q_{\theta}(z|x)} \log{p_{\phi}(x|z)} - KL(q_{\theta}(z|x)||p(z))
+\end{equation}
+
+In practice, VAEs are modeled using neural networks; the approximate posterior is computed from the inference network (encoder) with parameters \(\theta\) and the likelihood is computed from the generative network (decoder) network with parameters \(\phi\). 
 \subsection{VQ-VAE}
+In order to learn discrete latent representations, the posterior and prior distributions are categorical instead of gaussian, and samples from these distributions are drawn by indexing an embedding table. The latent embedding space is \(e \in R^{K \times D}\), where \textit{K} is the size of the discrete latent space (i.e., a \textit{K}-way categorical) and \textit{D} is the dimensionality of each latent embedding vector \(e_{i}\).The discrete latent variables \textit{z} are calculated by a nearest neighbor look-up using the embedding table in a process referred to as Vector Quantization (VQ). Therefore, the forward computation pipeline can be viewed as a standard autoencoder with a non-linearity that maps the latents to one of \textit{K} embedding vectors. Since performing a nearest neighbors lookup is non-differentiable, straight-through gradient estimation is used so that the gradient passed back is the same before and after quantization. 
+
+The loss function consists of three terms: 
+\begin{enumerate}
+\item Reconstruction loss: Encourages original and reconstructed images to be similar
+\item Codebook loss: Encourages the embedding vectors \textit{e} to be close to the encoder output 
+\item Commitment loss: Encourages the encoder output to be close to the embedding vectors \textit{e} 
+\end{enumerate}
+
+\begin{equation}
+L = \log{p(x|z_q(x))} + {\|\textrm{sg}[z_e(x)]-e\|}_2 + \beta{\|z_e(x)-\textrm{sg}[e]\|}_2
+\end{equation}
+
+
+The decoder optimizes the first term only, the encoder optimizes the first and last terms, and the embeddings are optimized by the middle term. 
+
 \subsection{VQ-VAE2}
+
+VQ-VAE2 builds on VQ-VAE by using a hierarchical VQ-VAE model to encode images onto a discrete latent space, followed by learning a powerful PixelCNN prior. In this hierarchical architecture, the top-level latent code models global information and the bottom-level latent code, conditioned on the top-level latent, is responsible for representing local details. As a result the learned prior is also hierarchical; the top-level PixelCNN prior is conditioned on the class label, and the bottom level PixelCNN is conditioned on the class label as well as the top-level latent code. The authors show that the VQ-VAE2 framework produces samples that rival perceptual quality of GANs, while not suffering from lack of diversity. 
 
 \section{Experiments}
 
@@ -68,11 +102,11 @@ In a series of experiments, we compare traditional VAEs to VQ-VAEs. We first...
 
 \subsection{Kaokore Dataset}
 
-The Kaokore dataset consists of...
+The Kaokore dataset consists of facial expressions extracted from pre-modern Japanese artwork. The dataset focuses on cropped face images extracted from Japanese artwork from the Late Muromachi Period (16th century) to the Early Edo Period (17th century) to facilitate research on art history and artistic style. The most recent version contains 8848 colored images, and each image is annotated with gender (male, female) and social status (noble, warrior, incarnation, commoner) labels. The paper associated with the dataset looks at classification as well as generative modeling, such as neural painting and style transfer models. 
 
 \subsection{Results}
 
-\begin{table}
+\begin{table}[H]
     \centering
     \begin{tabular}{c c c}
         & Commitment Loss & Reconstruction Loss \\
@@ -83,7 +117,7 @@ The Kaokore dataset consists of...
     \caption{Commitment loss and reconstruction loss on the Kaokore testset for both algorithms.}
 \end{table}
 
-\begin{figure}
+\begin{figure}[H]
     \centering
     \begin{subfigure}{.49\linewidth}
         \centering
