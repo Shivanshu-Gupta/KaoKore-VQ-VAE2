@@ -12,8 +12,8 @@ try:
 except ImportError:
     amp = None
 
-from dataset import LMDBDataset
-from pixelsnail import PixelSNAIL
+from data import LMDBDataset
+from models.pixelsnail import PixelSNAIL
 from scheduler import CycleScheduler
 
 
