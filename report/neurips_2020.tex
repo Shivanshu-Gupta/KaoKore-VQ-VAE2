@@ -16,7 +16,7 @@
 \usepackage{subcaption}
 \usepackage{float}
 
-\title{Vector Quantized Variational Autoencoders \\on Novel Datasets}
+\title{Testing Improvements for Vector Quantized Variational Autoencoders with Novel Data}
 
 \author{
   Shivanshu Gupta
@@ -98,7 +98,7 @@ VQ-VAE2 builds on VQ-VAE by using a hierarchical VQ-VAE model to encode images o
 
 \section{Experiments}
 
-In a series of experiments, we compare traditional VAEs to VQ-VAEs. We first...
+In a series of experiments, we compare the original VQ-VAE implementation to its variant VQ-VAE2. For VQ-VAE2, we implement the algorithm ourselves. For VQ-VAE we use an implementation from \url{https://github.com/nadavbh12/VQ-VAE}.
 
 \subsection{Kaokore Dataset}
 
@@ -114,10 +114,11 @@ The Kaokore dataset consists of facial expressions extracted from pre-modern Jap
         VQ-VAE & 0.0793 (0.0027) & 0.0056 (0.0001) \\
         VQ-VAE2 & 0.0025 (0.0035) & 0.0005 (0.0008)
     \end{tabular}
-    \caption{Commitment loss and reconstruction loss on the Kaokore testset for both algorithms.}
+    \label{table:loss}
+    \caption{Commitment loss and reconstruction loss on the Kaokore testset for both algorithms. The numbers in paranthesis show standard deviation over three runs.}
 \end{table}
 
-\begin{figure}[H]
+\begin{figure}[t]
     \centering
     \begin{subfigure}{.49\linewidth}
         \centering
@@ -129,18 +130,28 @@ The Kaokore dataset consists of facial expressions extracted from pre-modern Jap
         \includegraphics[width=\linewidth]{recon.png}
         \caption{Reconstruction loss over 100 epochs.}
     \end{subfigure}
+    \label{fig:loss}
 \end{figure}
 
-\begin{figure}
+\begin{figure}[t]
     \centering
     \includegraphics[width=\linewidth]{samples.png}
+    \label{fig:samples}
     \caption{The first six rows of images show samples at 1, 12, 14, 16, 18, and 100 epochs for VQ-VAE (left) and VQ-VAE2 (right). The final row shows the cooresponding images from the testset.}
 \end{figure}
 
-As indicated in table...
+As indicated in table \ref{table:loss} and figure \ref{fig:loss}, the primary advantage of VQ-VAE2 is the lower loss. This is achieved due to the better ELBO via the heirarchical model structure. The overall loss is composed of the reconstruction loss plus the commitment loss multiplied by a scalar. This trade off is the cause of the commitment loss increasing slightly as reconstruction loss lowers. 
+
+Another observation from these results is that VQ-VAE2 starts off training slower than VQ-VAE. We cannot find any reason to justify this in the algorithm itself, so we assume it is a result of untuned hyperparameters or a small bug in our code. Time permitting we would look into this further.
+
+This delay in learning can also be seen in figure \ref{fig:samples}. The first row shows that VQ-VAE2 starts off outputting noise for the first few epochs. Rows two through five show samples from the epochs where the loss of VQ-VAE2 changes the fastest. During these epochs, VQ-VAE2 starts to outperform VQ-VAE. Also note that VQ-VAE2 starts to learn lines and image structure before learning colors.
+
+% TODO add a paragraph talking about Shivanshu's visualizations.
 
 \section{Conclusion}
 
-The authors of the VQ-VAE paper presented promising results. However, bsaed on our experiments, we conclude that it is not strictly better than VAE on every dataset...
+VQ-VAEs have quickly become a popular algorithm for generative machine learning. The improvements of VQ-VAE2 lower the reconstruction loss of the algorithm resulting in better performance. Our experiments using the new Kaokore dataset add additional support to this claim. Additional work is needed to verify whether VQ-VAE2 suffers from slower learning than the original implementation, but it is clear that VQ-VAE2 consistantly lowers the loss of the algorithm.
+
+% TODO add bibliography
 
 \end{document}
