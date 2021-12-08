@@ -8,7 +8,7 @@ import lmdb
 from tqdm import tqdm
 
 from data import ImageFileDataset, CodeRow
-from models.vqvae import VQVAE
+from models.vae import VQ_VAE2
 
 
 def extract(lmdb_env, loader, model, device):
@@ -56,7 +56,7 @@ if __name__ == '__main__':
     dataset = ImageFileDataset(args.path, transform=transform)
     loader = DataLoader(dataset, batch_size=128, shuffle=False, num_workers=4)
 
-    model = VQVAE()
+    model = VQ_VAE2()
     model.load_state_dict(torch.load(args.ckpt))
     model = model.to(device)
     model.eval()
