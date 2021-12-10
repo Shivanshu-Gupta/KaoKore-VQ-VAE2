@@ -16,7 +16,7 @@
 % \usepackage{subcaption}
 \usepackage{float}
 
-\title{Testing Improvements for Vector Quantized Variational Autoencoders with Novel Data}
+\title{Testing Improvements for Vector Quantized Variational Autoencoders with a Novel Dataset}
 
 \author{
   Shivanshu Gupta
@@ -48,7 +48,7 @@ Within the area of generative models, variational autoencoders (VAE) are one of 
 
 Instead, vector-quantized VAEs (VQ-VAE) learn discrete latent representations \cite{VQ_VAE}. Discrete representations can be advantageous since real world data is often summarized by categorical features. For example, the latent representation for an image containing a discrete set of objects could have discrete latent variables for size, color, orientation, and so on. In fact, VQ-VAEs have been a key component in novel developments such as DALL-E, a model that generates high quality images from text descriptions. At a high level, DALL-E uses a transformer that takes in both the embeddings from text and latent codes from a VQ-VAE trained on images as input \cite{DALLE}.
 
-In this work, we compare VQ-VAE to its variant, VQ-VAE2. VQ-VAE2 builds on VQ-VAE by leveraging a hierarchical structure with a learned prior \cite{VQ_VAE2}. We go into further detail comparing the algorithms in section \ref{methods}. We implement each of these methods and run experiments using the Kaokore dataset. 
+In this work, we compare VQ-VAE to its variant, VQ-VAE2. VQ-VAE2 builds on VQ-VAE by leveraging a hierarchical structure with a learned prior \cite{VQ_VAE2}. We go into further detail comparing the algorithms in section \ref{methods}. We implement each of these methods and run experiments using the Kaokore dataset\footnote{\url{https://github.com/Shivanshu-Gupta/KaoKore-VQ-VAE2}}. 
 
 \begin{figure}
     \centering
@@ -63,7 +63,7 @@ In this section, we will describe the various models that are relevant to our wo
 
 \subsection{VAE}
 
-Similar to vanilla autoencoders, variational autoencoders include an encoder which yields a lower dimensional latent representation and a decoder which reconstructs the input. However, VAEs compute an additional loss term that computes the Kullback-Leibler (KL) divergence between the encoder’s distribution \(q_{\theta}(z|x)\) and \(p(z)\), where \(p(z)\) is typically specified as a normal distribution with zero mean and unit variance. This term serves as a regularizer that keeps similar inputs’ latent representations close together.
+Similar to autoencoders, Variational autoencoders include an encoder which yields a lower dimensional latent representation and a decoder which reconstructs the input. However, VAEs compute an additional loss term that computes the Kullback-Leibler (KL) divergence between the encoder’s distribution \(q_{\theta}(z|x)\) and the prior \(p(z)\) (typically isotropic gaussian). This term serves as a regularizer that keeps similar inputs’ latent representations close together.
 
 % From a generative modeling perspective, imagine data point \textit{i} is sampled by 1) drawing latent variable \(z_{i}\) and 2) drawing data point \(x_{i}\) based on \(z_{i}\). Therefore, we would like to infer a good latent representation \textit{z} given input \textit{x}. This is given by the posterior, \(p(z)\). However, computing the prior, \(p(x)\), requires marginalizing over latents \textit{z} and is often computationally intractable. Instead, variational inference allows us to approximate \textit{p(z|x)} through another distribution \textit{q(z|x)}, which is referred to as the approximate posterior. In other words, we would like to optimize the divergence between the approximate and original posteriors: $\min{KL(q(z|x) \| p(z|x))}$.
 
@@ -79,22 +79,17 @@ In practice, VAEs are modeled using neural networks; the approximate posterior i
 
 To learn discrete latent representations, the posterior and prior distributions are categorical instead of gaussian, and samples from these distributions are drawn by indexing an embedding table. The latent embedding space is \(e \in R^{K \times D}\), where \textit{K} is the size of the discrete latent space (i.e., a \textit{K}-way categorical) and \textit{D} is the dimensionality of each latent embedding vector \(e_{i}\).The discrete latent variables \textit{z} are calculated by a nearest neighbor look-up using the embedding table in a process referred to as Vector Quantization (VQ). Therefore, the forward computation pipeline can be viewed as a standard autoencoder with a non-linearity that maps the latents to one of \textit{K} embedding vectors. Since performing a nearest neighbors lookup is non-differentiable, straight-through gradient estimation is used so that the gradient passed back is the same before and after quantization. 
 
-The VQ-VAE loss function consists of three terms: 
-\begin{enumerate}
-\item Reconstruction loss: Encourages original and reconstructed images to be similar
-\item Codebook loss: Encourages the embedding vectors \textit{e} to be close to the encoder output 
-\item Commitment loss: Encourages the encoder output to be close to the embedding vectors \textit{e} 
-\end{enumerate}
+The VQ-VAE loss function consists of three terms: (1) Reconstruction loss: Encourages original and reconstructed images to be similar. (2) Codebook loss: Encourages the embedding vectors \textit{e} to be close to the encoder output. (3) Commitment loss: Encourages the encoder output to be close to the embedding vectors \textit{e}. The codebook and commitment losses are equal numerically but use \textrm{sg} operator to update only the embeddings and the encoder respectively. 
 
 \begin{equation}
-L = \log{p(x|z_q(x))} + {\|\textrm{sg}[z_e(x)]-e\|}_{2}^{2} + \beta{\|z_e(x)-\textrm{sg}[e]\|}_{2}^{2}
+L = \overbrace{\log{p(x|z_q(x))}}^{Reconstruction} + \overbrace{{\|\textrm{sg}[z_e(x)]-e\|}_{2}^{2}}^{Codebook} + \overbrace{\beta{\|z_e(x)-\textrm{sg}[e]\|}_{2}^{2}}^{Commitment}
 \end{equation}
 
 The decoder optimizes the first term only, the encoder optimizes the first and last terms, and the embeddings are optimized by the middle term. 
 
 \subsection{VQ-VAE2}
 
-VQ-VAE2 builds on VQ-VAE by using a hierarchical VQ-VAE model to encode images onto a discrete latent space, followed by learning a powerful PixelCNN prior. In this hierarchical architecture, the top-level latent code models global information and the bottom-level latent code, conditioned on the top-level latent, is responsible for representing local details. As a result the learned prior is also hierarchical; the top-level PixelCNN prior is conditioned on the class label, and the bottom level PixelCNN is conditioned on the class label as well as the top-level latent code. The authors show that the VQ-VAE2 framework produces samples that rival the perceptual quality of GANs, while not suffering from lack of diversity. 
+VQ-VAE2 builds on VQ-VAE by using a hierarchical VQ-VAE model to encode images onto a discrete latent space, followed by learning a powerful autoregressive prior. In this hierarchical architecture, the top-level latent code models global information and the bottom-level latent code, conditioned on the top-level latent, is responsible for representing local details. As a result the learned prior is also hierarchical; the top-level prior is conditioned on the class label, and the bottom level prior is conditioned on the class label as well as the top-level latent code. An additional change from VQ-VAE is that instead of using the Codebook loss to update the embeddings, the VQ-VAE2 uses an expoential moving average. The authors show that the VQ-VAE2 framework produces samples that rival the perceptual quality of GANs, while not suffering from lack of diversity. 
 
 \section{Experiments}
 
@@ -107,7 +102,7 @@ VQ-VAE2 builds on VQ-VAE by using a hierarchical VQ-VAE model to encode images o
         VQ-VAE2 & 0.0025 (0.0035) & 0.0005 (0.0008)
     \end{tabular}
     \label{table:loss}
-    \caption{Commitment loss and reconstruction loss on the Kaokore testset for both algorithms. The numbers in paranthesis show standard deviation over three runs.}
+    \caption{Commitment loss and reconstruction loss on the Kaokore testset for both algorithms. The numbers in parenthesis show standard deviation over three runs.}
 \end{table}
 
 \begin{figure}
@@ -131,9 +126,9 @@ For experimentation, we use the Kaokore dataset consists of facial expressions e
 
 \subsection{Results}
 
-As indicated in table \ref{table:loss} and figure \ref{fig:loss}, the primary advantage of VQ-VAE2 is lower loss. This is achieved due to a better ELBO, coming from the hierarchical model structure. The overall loss is composed of the reconstruction loss plus the commitment loss multiplied by a scalar. This trade-off is the cause of the commitment loss increasing slightly as reconstruction loss lowers. 
+As indicated in table \ref{table:loss} and figure \ref{fig:loss}, the primary advantage of VQ-VAE2 is lower loss. This is achieved due to a better ELBO, coming from the hierarchical model structure. This trade-off is the cause of the commitment loss increasing slightly as reconstruction error lowers. 
 
-Another observation from these results is that VQ-VAE2 starts off training slower than VQ-VAE. Perhaps this initial slowness is the result of training a more complex model. Additional experimentation would be useful to differentiate if this is due to model differences, or other factors like choice of hyperparameters or random seeds. 
+Another observation from our experiments was that VQ-VAE2 starts off training slower than VQ-VAE having low commitment loss but high reconstruction error. It remains in this regime for a few epochs before suddenly starting to generate good reconstructions. We believe this is a local minima for VQ-VAE2 because in our experiments we observed that it even after starting to generate good reconstructions it can go back to generating poor ones with lower commitment loss. We got around this by reducing the learning rate the prevent the model from going back to this local minima. Additional experimentation would be useful to differentiate if this is due to model differences, or other factors like choice of hyperparameters or random seeds. 
 
 This delay in learning can also be seen in figure \ref{fig:samples}. The first row shows that VQ-VAE2 starts off outputting noise for the first few epochs. Rows two through five show samples from the epochs where the loss of VQ-VAE2 changes the fastest. During these epochs, VQ-VAE2 starts to outperform VQ-VAE. Also note that VQ-VAE2 starts to learn lines and image structure before learning colors. It takes about 14 epochs for the model to become more precise in coloring.
 
@@ -148,7 +143,11 @@ The VQ-VAE2 authors show that a hierarchical VQ-VAE model augmented with a learn
 
 \section{Conclusion}
 
-VQ-VAEs have become an increasingly popular type of generative model. The improvements of VQ-VAE2 lower the reconstruction loss of the algorithm, resulting in better overall performance. Our experiments using the recently-constructed Kaokore dataset offer further support to this claim. Additional experimentation is needed to verify whether VQ-VAE2 suffers from slower learning than VQ-VAE across various settings. Furthermore, we need to spend more time understanding why image generation is poor using VQ-VAE2 with the PixelCNN prior, since this has been used in previous work to generate high fidelity images. 
+VQ-VAEs have become an increasingly popular type of generative model. The improvements of VQ-VAE2 lower the reconstruction loss of the algorithm, resulting in better overall performance. Our experiments using the recently-constructed Kaokore dataset offer further support to this claim. Additional experimentation is needed to verify whether VQ-VAE2 suffers from slower learning than VQ-VAE across various settings. Furthermore, we need to spend more time understanding why image generation is poor using VQ-VAE2 with the PixelSNAIL prior, since this has been used in previous work to generate high fidelity images. 
+
+\section{Contributions}
+
+Writing the VQ-VAE models was primarily completed by Shivanshu. Running and visualizing experiments were Kolby's responsibility. Preethi was responsible for training VQ-VAE2 with a learned prior and generating samples from it. Kolby and Preethi took charge of writing the report.
 
 % TODO add bibliography
 \bibliographystyle{plain}
