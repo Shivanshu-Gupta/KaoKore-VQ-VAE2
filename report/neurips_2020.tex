@@ -53,7 +53,7 @@ In this work, we compare VQ-VAE to its variant, VQ-VAE2. VQ-VAE2 builds on VQ-VA
 \begin{figure}
     \centering
     \includegraphics[width=0.7\linewidth]{clustering.png}
-    \caption{t-SNE plot for randomly sampled training examples from Kaokore dataset colored by gender and status labels. There are no distinct clusters based on label.}
+    \caption{t-SNE plot for randomly sampled training examples from Kaokore dataset colored by gender and status labels. We obtain initial image representations from PCA and then feed the output to t-SNE.}
     \label{fig:clustering}
 \end{figure} 
 
@@ -98,13 +98,6 @@ VQ-VAE2 builds on VQ-VAE by using a hierarchical VQ-VAE model to encode images o
 
 \section{Experiments}
 
-\begin{figure}
-    \centering
-    \includegraphics[width=.9\linewidth]{samples.png}
-    \label{fig:samples}
-    \caption{The first six rows of images show samples at 1, 12, 14, 16, 18, and 100 epochs for VQ-VAE (left) and VQ-VAE2 (right). The final row shows the corresponding images from the test set.}
-\end{figure} 
-
 \begin{table}
     \centering
     \begin{tabular}{c c c}
@@ -119,6 +112,13 @@ VQ-VAE2 builds on VQ-VAE by using a hierarchical VQ-VAE model to encode images o
 
 \begin{figure}
     \centering
+    \includegraphics[width=.9\linewidth]{samples.png}
+    \label{fig:samples}
+    \caption{The first six rows of images show samples at 1, 12, 14, 16, 18, and 100 epochs for VQ-VAE (left) and VQ-VAE2 (right). The final row shows the corresponding images from the test set.}
+\end{figure} 
+
+\begin{figure}
+    \centering
     \includegraphics[width=.4\linewidth]{commit.png}
     \includegraphics[width=.4\linewidth]{recon.png}
     \caption{Commitment and Reconstruction loss over 100 epochs.}
@@ -127,7 +127,7 @@ VQ-VAE2 builds on VQ-VAE by using a hierarchical VQ-VAE model to encode images o
 
 In a series of experiments, we compare the original VQ-VAE implementation to its variant VQ-VAE2. We use the following implementations as a starting point for VQ-VAE (\url{https://github.com/nadavbh12/VQ-VAE}) and VQ-VAE2 (\url{https://github.com/rosinality/vq-vae-2-pytorch}), and make modifications.
 
-For experimentation, we use the Kaokore dataset consists of facial expressions extracted from pre-modern Japanese artwork \cite{kaokore}. The dataset focuses on cropped face images extracted from Japanese artwork from the Late Muromachi Period (16th century) to the Early Edo Period (17th century) to facilitate research on art history and artistic style. The most recent version contains 8848 colored images, and each image is annotated with gender (male, female) and social status (noble, warrior, incarnation, commoner) labels. WE visualize the data classes in figure \ref{fig:clustering}.
+For experimentation, we use the Kaokore dataset consists of facial expressions extracted from pre-modern Japanese artwork \cite{kaokore}. The dataset focuses on cropped face images extracted from Japanese artwork from the Late Muromachi Period (16th century) to the Early Edo Period (17th century) to facilitate research on art history and artistic style. The most recent version contains 8848 colored images, and each image is annotated with gender (male, female) and social status (noble, warrior, incarnation, commoner) labels. We visualize the data classes using PCA and t-SNE in figure \ref{fig:clustering}.
 
 \subsection{Results}
 
